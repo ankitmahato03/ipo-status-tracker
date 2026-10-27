@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "server": "node server/index.js"
+    "server": "node server/index.js",
+    "sync:api": "node scripts/sync-api.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.460.0",

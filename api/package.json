@@ -1,0 +1,13 @@
+{
+  "name": "ipo-status-api",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/functions/*.js",
+  "dependencies": {
+    "@azure/functions": "^4.5.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

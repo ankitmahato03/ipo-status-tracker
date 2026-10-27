@@ -159,6 +159,24 @@ npm run dev                             # Vite forwards /api to :8787
 The proxy validates PAN and IPO id formats, enforces an origin allowlist and a
 per-IP rate limit, sets `Cache-Control: no-store`, and never logs request contents.
 
+## Deploying to Azure Static Web Apps
+
+The site is the Vite build (`dist/`), and the proxy runs as the built-in Azure
+Functions API in [api/](api/), serving the same `/api/ipo-status` and `/api/ipos`
+routes as `server/index.js`. Both hosts use the logic in
+[src/registrars/proxyCore.js](src/registrars/proxyCore.js).
+
+- **App location** `/`, **API location** `api`, **Output location** `dist`.
+- [.env.production](.env.production) sets `VITE_IPO_API_MODE=proxy`, so every
+  registrar is called through the same-origin API (no CORS needed).
+- [staticwebapp.config.json](staticwebapp.config.json) sets the API runtime (Node 20).
+- Optional app settings (Azure portal → Environment variables): `KFIN_API_URL`,
+  `MUFG_API_URL`, `UPSTREAM_TIMEOUT_MS`.
+- Azure builds `api/` on its own, so it holds a copy of `src/registrars/`. After
+  changing anything there, run `npm run sync:api` and commit the result; a test
+  fails if the copy is stale.
+- Unlike `server/index.js`, the Functions API has no per-IP rate limit.
+
 ## Verifying the integration
 
 1. `npm run dev` and open the browser's DevTools → Network tab.
