@@ -54,13 +54,37 @@ export async function handleStatus(body, env = process.env) {
   }
 }
 
-export async function handleIpos(registrarId, env = process.env) {
+// IPO lists change a few times a week, so a warm proxy reuses one for a few
+// minutes instead of re-reading the registrar's site on every page load. A stale
+// copy is served if the registrar can't be reached.
+export const DEFAULT_IPO_LIST_CACHE_MS = 5 * 60 * 1000
+const ipoListCache = new Map() // registrar id -> { data, at }
+
+export function clearIpoListCache() {
+  ipoListCache.clear()
+}
+
+function ipoListCacheMs(env) {
+  const ms = Number(env.IPO_LIST_CACHE_MS)
+  return env.IPO_LIST_CACHE_MS !== undefined && Number.isFinite(ms) && ms >= 0 ? ms : DEFAULT_IPO_LIST_CACHE_MS
+}
+
+function ipoListResult({ data, at }) {
+  return { status: 200, body: { data, updatedAt: new Date(at).toISOString() } }
+}
+
+export async function handleIpos(registrarId, env = process.env, now = Date.now) {
   const registrar = getRegistrar(String(registrarId ?? ''))
   if (!registrar) return { status: 400, body: { error: 'Unknown registrar', kind: 'validation' } }
   if (!registrar.listIpos) return { status: 200, body: { data: registrar.ipos } }
+
+  const cached = ipoListCache.get(registrar.id)
+  if (cached && now() - cached.at < ipoListCacheMs(env)) return ipoListResult(cached)
   try {
-    return { status: 200, body: { data: await registrar.listIpos(upstream(registrar, env)) } }
+    const entry = { data: await registrar.listIpos(upstream(registrar, env)), at: now() }
+    ipoListCache.set(registrar.id, entry)
+    return ipoListResult(entry)
   } catch (err) {
-    return errorResult(err)
+    return cached ? ipoListResult(cached) : errorResult(err)
   }
 }

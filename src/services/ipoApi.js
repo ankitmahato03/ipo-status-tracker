@@ -12,6 +12,11 @@ export const DEFAULT_PROXY_URL = '/api/ipo-status'
 export const DEFAULT_IPO_LIST_URL = '/api/ipos'
 export const DEFAULT_TIMEOUT_MS = 20000
 
+// Local-setup hints only make sense in `npm run dev`, not on the deployed site.
+const NETWORK_ERROR_MESSAGE = import.meta.env?.DEV
+  ? 'Could not reach the IPO status service. Check your internet connection. If this keeps happening, the service may not allow requests from this site (CORS), or the proxy (npm run server) is not running; see the README.'
+  : 'Could not reach the IPO status service. Check your internet connection and try again in a moment.'
+
 export function readApiConfig(env = import.meta.env ?? {}) {
   const mode = env.VITE_IPO_API_MODE === 'proxy' ? 'proxy' : 'direct'
   const proxyUrl = env.VITE_IPO_PROXY_URL || DEFAULT_PROXY_URL
@@ -81,10 +86,7 @@ async function withTimeout(cfg, signal, run) {
     if (error instanceof IpoApiError) throw error
     if (timedOut) throw new IpoApiError('timeout', 'The request timed out. Please try again.')
     if (signal?.aborted) throw new IpoApiError('aborted', 'The request was cancelled.')
-    throw new IpoApiError(
-      'network',
-      'Could not reach the IPO status service. Check your internet connection. If this keeps happening, the service may not allow requests from this site (CORS), or the proxy (npm run server) is not running; see the README.',
-    )
+    throw new IpoApiError('network', NETWORK_ERROR_MESSAGE)
   } finally {
     clearTimeout(timer)
     signal?.removeEventListener('abort', onExternalAbort)

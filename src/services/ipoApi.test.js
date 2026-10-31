@@ -121,10 +121,12 @@ describe('routing by registrar', () => {
 })
 
 describe('fetchIpoList', () => {
-  it('returns null for registrars without a live list', async () => {
-    const fetchImpl = mockFetch(200, { data: [] })
-    await expect(fetchIpoList('kfintech', { fetchImpl, config: DIRECT })).resolves.toBeNull()
-    expect(fetchImpl).not.toHaveBeenCalled()
+  it('loads the KFintech live list through the proxy, even in direct mode', async () => {
+    const fetchImpl = mockFetch(200, { data: [{ clientId: '72794313091', name: 'BLS POLYMERS LIMITED' }], updatedAt: 'x' })
+    await expect(fetchIpoList('kfintech', { fetchImpl, config: DIRECT })).resolves.toEqual([
+      { clientId: '72794313091', name: 'BLS POLYMERS LIMITED' },
+    ])
+    expect(fetchImpl.mock.calls[0][0]).toBe('/api/ipos?registrar=kfintech')
   })
 
   it('loads the live list through the proxy', async () => {

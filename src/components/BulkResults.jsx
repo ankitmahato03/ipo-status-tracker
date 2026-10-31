@@ -46,7 +46,7 @@ function BulkStatus({ status, error }) {
 
 function Stat({ label, value, className }) {
   return (
-    <div className="rounded-xl border border-slate-200 px-4 py-3">
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
       <p className="text-xs font-medium text-slate-500">{label}</p>
       <p className={`text-xl font-bold tabular-nums ${className}`}>{value}</p>
     </div>

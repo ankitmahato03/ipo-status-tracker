@@ -34,7 +34,7 @@ record fields:
 
 | Registrar | Adapter | Browser direct? | IPO list |
 |---|---|---|---|
-| KFin Technologies | [kfintech.js](src/registrars/kfintech.js) | Yes (if CORS allows) | Built in, or `VITE_IPO_LIST_KFINTECH` |
+| KFin Technologies | [kfintech.js](src/registrars/kfintech.js) | Yes (if CORS allows) | Loaded live through the proxy from the official site's bundle; built-in fallback |
 | MUFG Intime (Link Intime) | [mufg.js](src/registrars/mufg.js) | **No: always through the proxy** | Loaded live from the registrar; built-in fallback |
 
 **Adding a registrar:** write `src/registrars/<id>.js` exporting an object with
@@ -113,9 +113,24 @@ down or blocking requests. **Stop** pauses a batch, and **Retry unfinished**
 resumes it. The results table has one row per application (a PAN with no record
 gets one "No record" row), and **Export CSV** saves the whole batch.
 
-The KFintech IPO list lives in [src/registrars/kfintech.js](src/registrars/kfintech.js)
-and mirrors the official site as of 2026-10-27. KFintech changes it as IPOs open
-and close: update the file or set `VITE_IPO_LIST_KFINTECH` (see `.env.example`).
+### Keeping the IPO dropdown current
+
+Registrars add IPOs without notice, so the dropdown is loaded live from
+`GET /api/ipos?registrar=<id>` (the Azure Functions API in production, or
+`npm run server` locally):
+
+- **KFintech** has no list endpoint. Its site embeds the list in its JS bundle
+  (`main.<hash>.js`) and publishes a new bundle when an IPO is added. The proxy
+  reads `https://ipostatus.kfintech.com/`, follows the current bundle, and
+  extracts the `{ clientId, name }` entries.
+- **MUFG Intime** uses `IPO.aspx/GetDetails`.
+
+The proxy caches each list for 5 minutes (`IPO_LIST_CACHE_MS`) and serves the last
+good copy if the registrar is unreachable. The page re-checks every 10 minutes
+while it's open, and again when the tab comes back into view. **Refresh list**
+checks right away, and newly added IPOs are announced above the form. If the live
+list can't load, the page falls back to the built-in list in the adapter (KFintech:
+as of 2026-10-31) or a `VITE_IPO_LIST_<ID>` override, and labels it "saved list".
 
 ## Configuration
 
@@ -137,6 +152,7 @@ put in a `VITE_` variable.
 | `KFIN_API_URL` | KFintech URL above | Proxy upstream for KFintech |
 | `MUFG_API_URL` | `https://in.mpms.mufg.com/Initial_Offer/IPO.aspx` | Proxy upstream for MUFG Intime (a method URL like `…/SearchOnPan` also works) |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | Comma-separated origin allowlist for the proxy |
+| `IPO_LIST_CACHE_MS` | `300000` | How long the proxy reuses a registrar's IPO list (`0` = always refetch) |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Proxy requests per IP per minute |
 | `UPSTREAM_TIMEOUT_MS` | `15000` | Proxy upstream timeout |
 

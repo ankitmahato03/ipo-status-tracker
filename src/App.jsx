@@ -3,31 +3,15 @@ import Header from './components/Header.jsx'
 import PanSearchForm from './components/PanSearchForm.jsx'
 import ErrorMessage from './components/ErrorMessage.jsx'
 import BulkResults from './components/BulkResults.jsx'
-import { INITIAL_REGISTRAR_ID, REGISTRARS, getStaticIpoList } from './config/ipos.js'
+import { INITIAL_REGISTRAR_ID, REGISTRARS } from './config/ipos.js'
+import { useIpoList } from './hooks/useIpoList.js'
 import { checkPans } from './services/bulkCheck.js'
-import { fetchIpoList } from './services/ipoApi.js'
-
-// Starts with the registrar's fallback list and swaps in the live list when the
-// registrar publishes one (needs the proxy; the fallback stays if it's down).
-function useIpoList(registrarId) {
-  const [ipos, setIpos] = useState(() => getStaticIpoList(registrarId))
-  useEffect(() => {
-    const controller = new AbortController()
-    setIpos(getStaticIpoList(registrarId))
-    fetchIpoList(registrarId, { signal: controller.signal })
-      .then((live) => {
-        if (live?.length && !controller.signal.aborted) setIpos(live)
-      })
-      .catch(() => {})
-    return () => controller.abort()
-  }, [registrarId])
-  return ipos
-}
 
 export default function App() {
   const [panText, setPanText] = useState('')
   const [registrarId, setRegistrarId] = useState(INITIAL_REGISTRAR_ID)
-  const ipos = useIpoList(registrarId)
+  const ipoList = useIpoList(registrarId)
+  const { ipos } = ipoList
   const [ipoId, setIpoId] = useState('')
   // One entry per PAN: { pan, status: 'pending' | 'checking' | 'done' | 'error', records, error }.
   // Kept in memory only.
@@ -39,6 +23,11 @@ export default function App() {
   const inFlight = useRef(null)
 
   useEffect(() => () => inFlight.current?.abort(), [])
+
+  // A refreshed list can drop the selected IPO (closed issues get removed).
+  useEffect(() => {
+    if (ipoId && !ipos.some((ipo) => ipo.clientId === ipoId)) setIpoId('')
+  }, [ipos, ipoId])
 
   const runBatch = useCallback(async (pans, target) => {
     if (inFlight.current) return // ignore repeated clicks while a batch is running
@@ -105,9 +94,9 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-slate-50/60">
       <Header />
-      <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
+      <main className="relative mx-auto -mt-10 max-w-6xl space-y-6 px-4 pb-10 sm:px-6">
         <PanSearchForm
           panText={panText}
           onPanTextChange={setPanText}
@@ -116,7 +105,7 @@ export default function App() {
           onRegistrarChange={handleRegistrarChange}
           ipoId={ipoId}
           onIpoChange={setIpoId}
-          ipos={ipos}
+          ipoList={ipoList}
           loading={running}
           onSubmit={handleSubmit}
           onStop={handleStop}
@@ -137,8 +126,11 @@ export default function App() {
           <BulkResults results={results} ipoName={batch?.ipoName ?? 'Selected IPO'} running={running} onRetryFailed={handleRetryUnfinished} />
         ) : null}
       </main>
-      <footer className="mx-auto max-w-6xl px-4 pb-8 text-xs text-slate-500 sm:px-6">
-        Data is provided by the selected registrar. This tool does not store PANs or search history.
+      <footer className="border-t border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-5 text-xs text-slate-500 sm:flex-row sm:justify-between sm:px-6">
+          <p>Data comes directly from the selected registrar. Results are not stored.</p>
+          <p>Not affiliated with KFin Technologies or MUFG Intime.</p>
+        </div>
       </footer>
     </div>
   )

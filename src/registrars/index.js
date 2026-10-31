@@ -11,7 +11,8 @@
  *                          (Name, Appln_No, Pan_No, DP_CLID, category,
  *                          App_Shares, All_Shares; extra fields are kept).
  *                          [] means no record. Throws IpoApiError on failure.
- *   listIpos({ url, fetch, signal })   optional; live IPO list
+ *   listIpos({ url, fetch, signal })   optional; live IPO list, read by the
+ *                                      proxy (GET /api/ipos) and cached there
  *
  * To add a registrar, write an adapter file and add it to REGISTRARS.
  */

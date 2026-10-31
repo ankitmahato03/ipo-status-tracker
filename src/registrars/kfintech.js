@@ -18,9 +18,21 @@ import { IpoApiError, errorForStatus, malformed } from './errors.js'
  */
 export const DEFAULT_API_URL = 'https://0uz601ms56.execute-api.ap-south-1.amazonaws.com/prod/api/query?type=pan'
 
-// Mirrors the list embedded in https://ipostatus.kfintech.com/ as of 2026-10-27.
-// KFintech changes it as IPOs open and close: edit it or set VITE_IPO_LIST.
+/*
+ * IPO list. KFintech has no list endpoint: the official site embeds the list in
+ * its JS bundle (main.<hash>.js) and redeploys the bundle whenever an IPO is
+ * added. listIpos() reads it from whichever bundle the site serves right now:
+ *
+ *   1. GET https://ipostatus.kfintech.com/  -> <script src="./static/js/main.<hash>.js">
+ *   2. GET that bundle                       -> JSON.parse('[{"clientId":"…","name":"…"}, …]')
+ */
+export const DEFAULT_SITE_URL = 'https://ipostatus.kfintech.com/'
+
+// Fallback when the live list can't load. Mirrors the site as of 2026-10-31,
+// newest first like the site; override with VITE_IPO_LIST.
 const IPOS = [
+  { clientId: '72794313091', name: 'BLS POLYMERS LIMITED' },
+  { clientId: '78094207710', name: 'LIGHTHOUSE COMMUNITIES FOUNDATION ZCZP OCTOBER 2026' },
   { clientId: '78061126051', name: 'JIO PLATFORMS LIMITED' },
   { clientId: '47651989560', name: 'SOLLFEGE SMART ELECTRONICS LIMITED' },
   { clientId: '15211216040', name: 'TONBO IMAGING INDIA LIMITED' },
@@ -75,6 +87,43 @@ export function buildRequest(url, pan, clientId) {
   ]
 }
 
+// Finds the site's main bundle. Only same-origin bundles are accepted.
+export function findBundleUrl(html, siteUrl = DEFAULT_SITE_URL) {
+  const match = /<script\b[^>]*\bsrc=["']([^"']*\/main\.[0-9a-f]+\.js)["']/i.exec(String(html))
+  if (!match) return null
+  const url = new URL(match[1], siteUrl)
+  return url.origin === new URL(siteUrl).origin ? url.href : null
+}
+
+function unescapeJs(text) {
+  return text.replace(/\\(u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\s\S])/g, (_, seq) =>
+    /^[ux][0-9a-f]/i.test(seq) && seq.length > 1 ? String.fromCharCode(parseInt(seq.slice(1), 16)) : seq,
+  )
+}
+
+// Matches {"clientId":"…","name":"…"} entries, quoted or as plain object keys.
+const IPO_ENTRY = /["']?clientId["']?\s*:\s*(["'])(\d{1,20})\1\s*,\s*["']?name["']?\s*:\s*(["'])((?:(?!\3)[^\\]|\\[\s\S])*)\3/g
+
+// Reads the IPO list out of the bundle source, in the site's order, without duplicates.
+export function extractIpoList(source) {
+  const seen = new Set()
+  const ipos = []
+  for (const [, , clientId, , rawName] of String(source).matchAll(IPO_ENTRY)) {
+    const name = unescapeJs(rawName).replace(/\s+/g, ' ').trim()
+    if (!name || seen.has(clientId)) continue
+    seen.add(clientId)
+    ipos.push({ clientId, name })
+  }
+  return ipos
+}
+
+async function fetchText(url, { fetch, signal }) {
+  const response = await fetch(url, { method: 'GET', cache: 'no-store', signal })
+  const text = await response.text()
+  if (!response.ok) throw errorForStatus(response.status)
+  return text
+}
+
 export const kfintech = {
   id: 'kfintech',
   name: 'KFin Technologies',
@@ -91,5 +140,14 @@ export const kfintech = {
     if (response.status === 404) return []
     if (!response.ok) throw errorForStatus(response.status)
     return parseResponseText(text)
+  },
+
+  // Runs on the proxy only: the site doesn't allow cross-origin reads.
+  async listIpos({ fetch, signal, siteUrl = DEFAULT_SITE_URL }) {
+    const bundleUrl = findBundleUrl(await fetchText(siteUrl, { fetch, signal }), siteUrl)
+    if (!bundleUrl) throw malformed()
+    const ipos = extractIpoList(await fetchText(bundleUrl, { fetch, signal }))
+    if (!ipos.length) throw malformed()
+    return ipos
   },
 }
